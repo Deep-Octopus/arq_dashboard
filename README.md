@@ -8,8 +8,7 @@
 
 **ARQ Dashboard** is a standalone visualization tool designed for developers using `arq` with Redis. It provides a clear overview of your background jobs without requiring complex setups like Prometheus or Grafana. It reads directly from Redis, parsing ARQ's compressed data structures to display task status, execution time, and results.
 
-![Dashboard Screenshot](https://via.placeholder.com/800x400?text=Please+Add+Your+Screenshot+Here)
-*(Add a screenshot of your dashboard here to show how it looks)*
+![Dashboard Screenshot](ui.png)
 
 ## ✨ Features
 
@@ -33,7 +32,7 @@
 
 1. **Clone the repository**
    ```bash
-   git clone [https://github.com/your-username/arq-dashboard.git](https://github.com/your-username/arq-dashboard.git)
+   git clone https://github.com/Deep-Octopus/arq_dashboard.git
    cd arq-dashboard
     ```
 
@@ -41,7 +40,6 @@
     ```bash
     pip install -r requirements.txt
     ```
-    *(Create a requirements.txt with: `fastapi`, `uvicorn`, `redis`, `arq`, `pydantic`)*
 
 ## ⚙️ Configuration
 
@@ -72,7 +70,7 @@ The server will start on port **8999**.
 
 Open your browser and visit:
 👉 **http://localhost:8999**
-![UI](ui.png)
+
 
 ## 🧩 Project Structure
 
