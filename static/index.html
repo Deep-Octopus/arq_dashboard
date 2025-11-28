@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ARQ Task Monitor (High Performance)</title>
+    
+    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+    
+    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/6.26.0/babel.min.js"></script>
+    
+    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.4/moment.min.js"></script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/antd/4.24.15/antd.min.css" />
+    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/antd/4.24.15/antd.min.js"></script>
+    
+    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/ant-design-icons/4.7.0/index.umd.min.js"></script>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.6.2/axios.min.js"></script>
+    
+    <style>
+        body { background-color: #f0f2f5; padding: 20px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; }
+        .header { margin-bottom: 24px; display: flex; justify-content: space-between; align-items: center; }
+        .args-text { color: #666; font-family: Consolas, monospace; font-size: 12px; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block;}
+        /* 修复 Antd v4 表格在某些情况下字号过小 */
+        .ant-table { font-size: 13px; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        // === 关键修改：Antd v4 的解构方式 ===
+        const { Card, Table, Tag, Row, Col, Statistic, Button, Typography, Modal, Tooltip } = antd;
+        const { Title } = Typography;
+        
+        // 图标库在 v4 CDN 中通常挂载在 icons 对象下
+        const { ReloadOutlined, CheckCircleOutlined, SyncOutlined, CloseCircleOutlined } = icons;
+
+        const App = () => {
+            const [loading, setLoading] = React.useState(false);
+            const [data, setData] = React.useState({ queued_count: 0, jobs: [] });
+            const [autoRefresh, setAutoRefresh] = React.useState(true);
+
+            const fetchData = async () => {
+                setLoading(true);
+                try {
+                    const res = await axios.get('http://localhost:8999/api/data');
+                    setData(res.data);
+                } catch (err) {
+                    console.error("Fetch error", err);
+                    // 如果后端没起，给个提示
+                    if (data.jobs.length === 0) {
+                        antd.message.error("无法连接监控后端，请检查 python monitor.py 是否运行");
+                    }
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            // 首次加载和自动刷新
+            React.useEffect(() => {
+                fetchData();
+                const interval = setInterval(() => {
+                    if (autoRefresh) fetchData();
+                }, 3000); 
+                return () => clearInterval(interval);
+            }, [autoRefresh]);
+
+            const columns = [
+                {
+                    title: 'Status',
+                    dataIndex: 'status',
+                    key: 'status',
+                    width: 100,
+                    render: (status) => {
+                        let color = status === 'complete' ? 'success' : (status === 'queued' ? 'processing' : 'error');
+                        let icon = status === 'complete' ? <CheckCircleOutlined /> : (status === 'queued' ? <SyncOutlined spin /> : <CloseCircleOutlined />);
+                        let text = status === 'complete' ? '任务已调度' : '任务取消/失效'
+                        return <Tag icon={icon} color={color}>{text}</Tag>;
+                    }
+                },
+                {
+                    title: 'Function',
+                    dataIndex: 'function',
+                    key: 'function',
+                    render: (text) => <b>{text}</b>
+                },
+                {
+                    title: 'Task Info',
+                    dataIndex: 'args',
+                    key: 'args',
+                    render: (text) => {
+                        // 1. 判断是否是特殊格式 (带 [] 的)
+                        const isSpecial = text && text.startsWith('[');
+                        
+                        // 2. 定义基础样式
+                        const baseStyle = {
+                            display: 'block',          // 必须是 block 才能限制宽度
+                            overflow: 'hidden',        // 超出部分隐藏
+                            maxHeight: '15em',          // 限制高度，超过 10 行就滚动
+                            overflowY: 'auto',         // 超出部分垂直滚动
+                            textOverflow: 'ellipsis',  // 超出显示省略号
+                            maxWidth: '100%',          // 撑满单元格
+                            cursor: 'pointer',         // 鼠标变小手，提示可交互
+                            fontSize: '13px',
+                            fontFamily: 'Consolas, monospace' // 用等宽字体看参数更舒服
+                        };
+
+                        // 3. 特殊格式加高亮颜色
+                        const finalStyle = isSpecial 
+                            ? { ...baseStyle, color: '#1890ff', fontWeight: '500' }
+                            : { ...baseStyle, color: '#666' };
+
+                        // 4. 使用 Tooltip 包裹，鼠标悬停显示全部内容
+                        // overlayStyle={{ maxWidth: 600 }} 让浮层宽一点，方便阅读
+                        return (
+                            <Tooltip title={text} placement="topLeft" overlayStyle={{ maxWidth: '600px', wordBreak: 'break-all' }}>
+                                <div style={finalStyle}>
+                                    {text}
+                                </div>
+                            </Tooltip>
+                        );
+                    }
+                },
+                {
+                    title: 'Duration',
+                    dataIndex: 'duration',
+                    key: 'duration',
+                    width: 100,
+                    align: 'right'
+                },
+                {
+                    title: 'Start Time',
+                    dataIndex: 'start_time',
+                    key: 'start_time',
+                    width: 160,
+                    align: 'center',
+                    render: (text) => <span style={{fontSize:'12px', color:'#888'}}>{text}</span>
+                },
+                {
+                    title: 'Result / Error',
+                    dataIndex: 'result',
+                    width:120,
+                    key: 'result',
+                    render: (text, record) => {
+                        if (record.success) return <span style={{color: '#52c41a'}}>OK</span>;
+                        return (
+                            <Button 
+                                type="link" 
+                                danger 
+                                size="small"
+                                onClick={() => Modal.error({
+                                    title: 'Error Details',
+                                    content: <div style={{maxHeight: '400px', overflow: 'auto', whiteSpace: 'pre-wrap', fontFamily:'monospace'}}>{text}</div>,
+                                    width: 600
+                                })}
+                            >
+                                View Error
+                            </Button>
+                        );
+                    }
+                }
+            ];
+
+            return (
+                <div style={{ maxWidth: 1400, margin: '0 auto' }}>
+                    <div className="header">
+                        <Title level={3} style={{margin:0, color: '#1890ff'}}>
+                            <span style={{marginRight:10}}>🚀</span> 
+                            ARQ Monitor
+                        </Title>
+                        <div>
+                            <Button 
+                                type={autoRefresh ? "primary" : "default"} 
+                                onClick={() => setAutoRefresh(!autoRefresh)}
+                                style={{marginRight: 10}}
+                            >
+                                {autoRefresh ? "Auto Refresh: ON" : "Auto Refresh: OFF"}
+                            </Button>
+                            <Button icon={<ReloadOutlined />} onClick={fetchData} loading={loading}>
+                                Refresh Now
+                            </Button>
+                        </div>
+                    </div>
+
+                    <Row gutter={16} style={{ marginBottom: 20 }}>
+                        <Col span={6}>
+                            <Card bordered={false} hoverable>
+                                <Statistic 
+                                    title="Queued Jobs" 
+                                    value={data.queued_count} 
+                                    valueStyle={{ color: data.queued_count > 0 ? '#1890ff' : '#3f8600', fontWeight: 'bold' }}
+                                    prefix={<SyncOutlined spin={data.queued_count > 0} />}
+                                />
+                            </Card>
+                        </Col>
+                        <Col span={6}>
+                            <Card bordered={false} hoverable>
+                                <Statistic 
+                                    title="Completed (Recent)" 
+                                    value={data.jobs.filter(j => j.success).length} 
+                                    valueStyle={{ color: '#3f8600' }}
+                                    prefix={<CheckCircleOutlined />}
+                                />
+                            </Card>
+                        </Col>
+                        <Col span={6}>
+                            <Card bordered={false} hoverable>
+                                <Statistic 
+                                    title="Failed (Recent)" 
+                                    value={data.jobs.filter(j => !j.success).length} 
+                                    valueStyle={{ color: '#cf1322' }}
+                                    prefix={<CloseCircleOutlined />}
+                                />
+                            </Card>
+                        </Col>
+                        <Col span={6}>
+                            <Card bordered={false} hoverable>
+                                <Statistic 
+                                    title="System Capacity" 
+                                    value="20 Workers" 
+                                    suffix="/ 128 Cores"
+                                    valueStyle={{fontSize: '18px', color: '#666'}}
+                                />
+                            </Card>
+                        </Col>
+                    </Row>
+
+                    <Card title="Recent Task History" bordered={false}>
+                        <Table 
+                            dataSource={data.jobs} 
+                            columns={columns} 
+                            rowKey="job_id"
+                            pagination={{ pageSize: 15 }} 
+                            size="middle"
+                        />
+                    </Card>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
